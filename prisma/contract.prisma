@@ -1,0 +1,493 @@
+// use prisma-8
+
+enum UserRole {
+  CUSTOMER
+  STORE_OWNER
+  STORE_ADMIN
+  STORE_STAFF
+  PLATFORM_ADMIN
+}
+
+enum StoreStatus {
+  ACTIVE
+  SUSPENDED
+  DRAFT
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum ThemeStatus {
+  ACTIVE
+  DRAFT
+}
+
+model User {
+  id           Uuid     @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  firstName    String?
+  lastName     String?
+  phone        String?
+  role         UserRole @default(CUSTOMER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    temporal.updatedAt()
+
+  memberships StoreMember[]
+  sessions    Session[]
+  customers   Customer[]
+  orders      Order[] @relation("UserOrders")
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+model Session {
+  id        Uuid     @id @default(uuid())
+  userId    Uuid
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt temporal.updatedAt()
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model Store {
+  id              Uuid        @id @default(uuid())
+  name            String
+  slug            String      @unique
+  description     String?
+  logoUrl         String?
+  faviconUrl      String?
+  status          StoreStatus @default(ACTIVE)
+  currency        String      @default("USD")
+  timezone        String      @default("UTC")
+  contactEmail    String?
+  contactPhone    String?
+  address         String?
+  city            String?
+  state           String?
+  country         String?
+  postalCode      String?
+  createdAt       DateTime    @default(now())
+  updatedAt       temporal.updatedAt()
+
+  members         StoreMember[]
+  domains         Domain[]
+  products        Product[]
+  categories      Category[]
+  customers       Customer[]
+  orders          Order[]
+  themes          Theme[]
+  pages           Page[]
+  coupons         Coupon[]
+  media           Media[]
+  settings        StoreSetting[]
+
+  @@index([slug])
+  @@index([status])
+  @@map("stores")
+}
+
+model StoreMember {
+  id        Uuid     @id @default(uuid())
+  storeId   Uuid
+  userId    Uuid
+  role      UserRole @default(STORE_STAFF)
+  createdAt DateTime @default(now())
+  updatedAt temporal.updatedAt()
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, userId])
+  @@index([storeId])
+  @@index([userId])
+  @@map("store_members")
+}
+
+model Domain {
+  id        Uuid     @id @default(uuid())
+  storeId   Uuid
+  domain    String   @unique
+  isPrimary Boolean  @default(false)
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt temporal.updatedAt()
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@map("domains")
+}
+
+model Product {
+  id               Uuid          @id @default(uuid())
+  storeId          Uuid
+  name             String
+  slug             String
+  sku              String?
+  description      String?
+  shortDescription String?
+  price            Decimal
+  compareAtPrice   Decimal?
+  costPrice        Decimal?
+  status           ProductStatus  @default(DRAFT)
+  trackInventory   Boolean       @default(true)
+  stockQuantity    Int           @default(0)
+  weight           Decimal?
+  featured         Boolean       @default(false)
+  seoTitle         String?
+  seoDescription   String?
+  createdAt        DateTime      @default(now())
+  updatedAt        temporal.updatedAt()
+
+  store       Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  media       ProductMedia[]
+  categories ProductCategory[]
+  variants    ProductVariant[]
+  inventory   InventoryItem[]
+  orderItems  OrderItem[]
+
+  @@unique([storeId, slug])
+  @@unique([storeId, sku])
+  @@index([storeId])
+  @@index([storeId, status])
+  @@index([storeId, featured])
+  @@map("products")
+}
+
+model ProductVariant {
+  id             Uuid     @id @default(uuid())
+  productId      Uuid
+  name           String
+  sku            String?
+  price          Decimal?
+  compareAtPrice Decimal?
+  stockQuantity  Int      @default(0)
+  options        Json?
+  imageUrl       String?
+  createdAt      DateTime @default(now())
+  updatedAt      temporal.updatedAt()
+
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  inventory InventoryItem[]
+  orderItems OrderItem[]
+
+  @@unique([productId, sku])
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model Media {
+  id           Uuid      @id @default(uuid())
+  storeId      Uuid
+  type         MediaType
+  url          String
+  thumbnailUrl String?
+  fileName     String?
+  mimeType     String?
+  fileSize     Int?
+  width        Int?
+  height       Int?
+  duration     Decimal?
+  altText      String?
+  createdAt    DateTime  @default(now())
+
+  store    Store          @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  products ProductMedia[]
+
+  @@index([storeId])
+  @@index([storeId, type])
+  @@map("media")
+}
+
+model ProductMedia {
+  id        Uuid     @id @default(uuid())
+  productId Uuid
+  mediaId   Uuid
+  sortOrder Int      @default(0)
+  isPrimary Boolean  @default(false)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  media   Media   @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, mediaId])
+  @@index([productId, sortOrder])
+  @@map("product_media")
+}
+
+model Category {
+  id          Uuid     @id @default(uuid())
+  storeId     Uuid
+  parentId    Uuid?
+  name        String
+  slug        String
+  description String?
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   temporal.updatedAt()
+
+  store    Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  parent   Category?         @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children Category[]        @relation("CategoryTree")
+  products ProductCategory[]
+
+  @@unique([storeId, slug])
+  @@index([storeId])
+  @@index([parentId])
+  @@map("categories")
+}
+
+model ProductCategory {
+  productId  Uuid
+  categoryId Uuid
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@id([productId, categoryId])
+  @@map("product_categories")
+}
+
+model InventoryItem {
+  id        Uuid     @id @default(uuid())
+  productId Uuid
+  variantId Uuid?
+  quantity  Int      @default(0)
+  reserved  Int      @default(0)
+  lowStock  Int      @default(5)
+  updatedAt temporal.updatedAt()
+
+  product Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, variantId])
+  @@index([productId])
+  @@index([variantId])
+  @@map("inventory_items")
+}
+
+model Customer {
+  id          Uuid           @id @default(uuid())
+  storeId     Uuid
+  userId      Uuid?
+  firstName   String
+  lastName    String?
+  email       String
+  phone       String?
+  status      CustomerStatus @default(ACTIVE)
+  notes       String?
+  createdAt   DateTime       @default(now())
+  updatedAt   temporal.updatedAt()
+
+  store     Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  orders    Order[]
+  addresses Address[]
+
+  @@unique([storeId, email])
+  @@index([storeId])
+  @@index([storeId, status])
+  @@map("customers")
+}
+
+model Address {
+  id         Uuid     @id @default(uuid())
+  customerId Uuid
+  firstName  String
+  lastName   String?
+  company    String?
+  address1   String
+  address2   String?
+  city       String
+  state      String?
+  postalCode String?
+  country    String
+  phone      String?
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  temporal.updatedAt()
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orders   Order[]
+
+  @@index([customerId])
+  @@map("addresses")
+}
+
+model Order {
+  id                Uuid          @id @default(uuid())
+  storeId           Uuid
+  customerId        Uuid?
+  userId            Uuid?
+  orderNumber       String
+  status            OrderStatus   @default(PENDING)
+  paymentStatus     PaymentStatus @default(PENDING)
+  currency          String        @default("USD")
+  subtotal          Decimal
+  discountTotal     Decimal       @default(0)
+  shippingTotal     Decimal       @default(0)
+  taxTotal          Decimal       @default(0)
+  total             Decimal
+  customerEmail     String
+  shippingAddressId Uuid?
+  notes             String?
+  createdAt         DateTime      @default(now())
+  updatedAt         temporal.updatedAt()
+
+  store           Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  customer        Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  user            User?     @relation("UserOrders", fields: [userId], references: [id], onDelete: SetNull)
+  shippingAddress Address?  @relation(fields: [shippingAddressId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+
+  @@unique([storeId, orderNumber])
+  @@index([storeId])
+  @@index([storeId, status])
+  @@index([customerId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id         Uuid     @id @default(uuid())
+  orderId    Uuid
+  productId  Uuid?
+  variantId  Uuid?
+  productName String
+  sku        String?
+  quantity   Int
+  unitPrice  Decimal
+  total      Decimal
+  createdAt  DateTime @default(now())
+
+  order   Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product?       @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Theme {
+  id          Uuid         @id @default(uuid())
+  storeId     Uuid
+  name        String
+  status      ThemeStatus  @default(DRAFT)
+  settings    Json?
+  createdAt   DateTime     @default(now())
+  updatedAt   temporal.updatedAt()
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@index([storeId])
+  @@index([storeId, status])
+  @@map("themes")
+}
+
+model Page {
+  id          Uuid       @id @default(uuid())
+  storeId     Uuid
+  title       String
+  slug        String
+  content     Json?
+  status      PageStatus @default(DRAFT)
+  seoTitle    String?
+  seoDescription String?
+  createdAt   DateTime   @default(now())
+  updatedAt   temporal.updatedAt()
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, slug])
+  @@index([storeId, status])
+  @@map("pages")
+}
+
+model StoreSetting {
+  id        Uuid     @id @default(uuid())
+  storeId   Uuid
+  key       String
+  value     Json?
+  createdAt DateTime @default(now())
+  updatedAt temporal.updatedAt()
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, key])
+  @@index([storeId])
+  @@map("store_settings")
+}
+
+model Coupon {
+  id             Uuid         @id @default(uuid())
+  storeId        Uuid
+  code           String
+  description    String?
+  discountType   DiscountType
+  discountValue  Decimal
+  minimumAmount  Decimal?
+  usageLimit     Int?
+  usageCount     Int          @default(0)
+  startsAt       DateTime?
+  expiresAt      DateTime?
+  active         Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      temporal.updatedAt()
+
+  store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, code])
+  @@index([storeId, active])
+  @@map("coupons")
+}
